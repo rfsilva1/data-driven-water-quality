@@ -1,4 +1,4 @@
-# {A Data-Driven Method for Water Quality Analysis and Prediction for Localized Irrigation
+# A Data-Driven Method for Water Quality Analysis and Prediction for Localized Irrigation
 ## Description
 This repository contains the code, and the final dataset used for the paper {A Data-Driven Method for Water Quality Analysis and Prediction for Localized Irrigation, by Roberto F Silva, Marcos R Benso, Fernando E Corrêa, Tamara G Messias, Fernando C Mendonça, Patrícia A A Marques, Sergio N Duarte, Eduardo M Mendiondo, Alexandre C B Delbem, and Antonio M Saraiva. We implemented the proposed methodology for
 evaluating water quality considering different variables in an important river basin in Brazil. We have used the standard scaling to scale data, and the k-means clustering and sci-kit learn library. Geopandas library was used to build maps, and matplotlib and seaborn to build charts. Pandas library was used to manipulate tabular data. This paper was accepted at MDPI Agriengineering, Agricultural Irrigation Systems
