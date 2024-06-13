@@ -1,1 +1,1 @@
-This folder contains both the dataset used (data_final_qualidade_pcj_v3.csv) and the shapefile for the region (GEOFT_BHO_PCJ_TDR.shp)
+This folder contains both the dataset used (data_final_qualidade_pcj_v3.csv) and a compressed file with the shapefile for the region (GEOFT_BHO_PCJ_TDR.zip). To open the shapefile, you must unzip it and use the .shp file
