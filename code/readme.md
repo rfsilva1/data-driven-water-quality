@@ -1,0 +1,1 @@
+This folder contains the code in an ipynb file. To use it on Google Colab, just upload it inside the colab interface. Don't forget to also download from this repository and upload to your Drive the dataset and shapefile for the region
