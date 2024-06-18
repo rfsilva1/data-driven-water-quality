@@ -2,7 +2,7 @@
 ## Description
 This repository contains the code, and the final dataset used for the paper <b>A Data-Driven Method for Water Quality Analysis and Prediction for Localized Irrigation</b>, by Roberto F Silva, Marcos R Benso, Fernando E Corrêa, Tamara G Messias, Fernando C Mendonça, Patrícia A A Marques, Sergio N Duarte, Eduardo M Mendiondo, Alexandre C B Delbem, and Antonio M Saraiva. We implemented the proposed methodology for
 evaluating water quality considering different variables in an important river basin in Brazil. We have used the standard scaling to scale data, and the k-means clustering and sci-kit learn library. Geopandas library was used to build maps, and matplotlib and seaborn to build charts. Pandas library was used to manipulate tabular data. This paper was accepted at MDPI Agriengineering, Agricultural Irrigation Systems
-section. Descriptions of the implementation and the dataset used are contained in the paper (link: [\url](https://www.mdpi.com/2624-7402/6/2/103)). The code is composed of 1 Colab notebook.
+section. Descriptions of the implementation and the dataset used are contained in the paper (link: [URL](https://www.mdpi.com/2624-7402/6/2/103)). The code is composed of 1 Colab notebook.
 
 The main dataset used was the Water quality data from different stations in the river basin: Infoáguas Online System (https: //sistemainfoaguas.cetesb.sp.gov.br/)
 
