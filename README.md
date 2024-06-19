@@ -4,7 +4,7 @@ This repository contains the code, and the final dataset used for the paper <b>A
 evaluating water quality considering different variables in an important river basin in Brazil. We have used the standard scaling to scale data, and the k-means clustering and sci-kit learn library. Geopandas library was used to build maps, and matplotlib and seaborn to build charts. Pandas library was used to manipulate tabular data. This paper was accepted at MDPI Agriengineering, Agricultural Irrigation Systems
 section. Descriptions of the implementation and the dataset used are contained in the paper (link: [URL](https://www.mdpi.com/2624-7402/6/2/103)). The code is composed of 1 Colab notebook.
 
-The main dataset used was the Water quality data from different stations in the river basin: Infoáguas Online System (https: //sistemainfoaguas.cetesb.sp.gov.br/)
+The main dataset used was the Water quality data from different stations in the river basin: Infoáguas Online System (https: //sistemainfoaguas.cetesb.sp.gov.br/). It was downloaded using the Infoaguas library (https://github.com/beatrizmilz/infoaguas) and the 
 
 The data processing code (not included in this repository) was developed by Marcos R. Benso. The methodology implementation code was developed by Roberto F. Silva.
 
@@ -41,6 +41,7 @@ The authors would also like to thank all the developers that were and are involv
 - reshape: https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/reshape
 - tidyr: https://cran.r-project.org/web/packages/tidyr/index.html
 - lubridate: https://cran.r-project.org/web/packages/lubridate/index.html
+- hidrobR: https://github.com/marcosrbenso/hidrobR
 
 ## Credits for the dataset:
 The authors would like to thank the following institutions for providing the data collected: CETESB, ANA, and the Infoáguas Online System
