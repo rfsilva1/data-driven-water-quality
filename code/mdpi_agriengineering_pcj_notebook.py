@@ -25,11 +25,7 @@ Original file is located at
 - Using Google Drive to store files is recommended. If so, it must be mounted
 """
 
-from google.colab import drive
-drive.mount('/content/drive')
-
-"""#1. Importing main libraries"""
-
+import argparse
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -46,64 +42,52 @@ from matplotlib.patches import Patch
 import warnings
 warnings.filterwarnings("ignore")
 
-"""#2. Loading the raw dataset"""
+def mount_google_drive():
+    """Mounts Google Drive to the Colab environment."""
+    from google.colab import drive
+    drive.mount('/content/drive')
 
-# Specify the path. It is recommended to store the files on a Google Drive folder. If so, it must be mounted first
-
-raw_df = pd.read_csv('/content/drive/MyDrive/Agri Rios 2024/Artigo Agriengineering - AgriRios 2024/dados/data_final_qualidade_pcj_v3.csv')
-
-# Evaluating the raw dataset. The names of the variables at the dataset used in this paper are in Portuguese
-
-raw_df
-
-# It is important to rename the variable columns to make data processing and knowledge extraction easier
-# First, define a dictionary for the new and old names of the columns
-
-column_dictionary = {
-    'Alcalinidade Total': 'alcalinity',
-    'Alumínio Dissolvido': 'aluminum',
-    'Condutividade': 'conductivity',
-    'Ferro Total': 'iron_total',
-    'pH': 'ph',
-    'Dureza': 'hardness',
-    'DBO (5, 20)': 'dbo',
-    'CTt': 'ctt'
+CONFIG = {
+    "ids_to_drop": [
+        '2011_1', '2011_2', '2011_5', '2011_6', '2011_7', '2011_8',
+        '2015_10', '2015_11', '2015_12', '2016_1', '2016_2', '2016_3',
+        '2016_5', '2016_6', '2016_7', '2016_8', '2016_11', '2016_12',
+        '2017_1', '2017_2', '2017_5', '2017_6', '2017_7', '2017_8',
+        '2017_11', '2017_12'
+    ],
+    "flood_year": ['2011_11', '2011_12', '2012_1', '2012_2', '2012_5', '2012_6', '2012_7', '2012_8'],
+    "normal_year": ['2012_11', '2012_12', '2013_1', '2013_2', '2013_5', '2013_6', '2013_7', '2013_8'],
+    "drought_year": ['2014_10', '2014_11', '2014_12', '2015_1', '2015_2', '2015_3', '2015_4', '2015_5', '2015_6', '2015_7', '2015_8'],
+    "variables_of_interest": ['conductivity', 'iron_total', 'ph', 'hardness', 'dbo', 'ctt', 'ctt_original'],
+    "cluster_value_colors": {0: 'fuchsia', 1: 'orange', 2: 'black', 3: 'purple', 4: 'orange'},
+    "variable_colors": {
+        'conductivity': 'green',
+        'ctt_original': 'blue',
+        'dbo': 'purple',
+        'hardness': 'orange',
+        'ph': 'black',
+        'iron_total': 'red',
+    }
 }
 
-# Rename the columns of the raw dataset to the new names
+def load_and_preprocess_data(data_path):
+    """Loads and preprocesses the raw data."""
+    raw_df = pd.read_csv(data_path)
 
-raw_df.rename(columns=column_dictionary, inplace=True)
-
-# Check if the renaming was correct
-
-raw_df.info()
-
-# Raw data analysis: count, mean, std, min, and max for each variable
-
-raw_df.describe()
-
-# Define the indices that will be used, separating them into categories
-# In this paper, the following categories and indices were used:
-# - Soil-related indices or parameters: ph and conductivity
-# - Irrigation systems-related indices or parameters: iron_total, hardness, dbo, and ctt
-
-# Select the years that will be considered. We recommend using at least one drought, one average, and one flood year
-# In the paper, we evaluated the average streamflow in the basin to define those years. The SSFI index was used
-# The hidrological years selected were:
-# - Flood -> 2011-2012
-# - Average -> 2012-2013
-# - Drought -> 2014-2015
-
-"""#3. Data cleaning"""
-
-# Create the final dataset, which will have only the relevant variables or parameters defined above
-# It is important to observe that the portuguese names for the variables BOD ('dbo') and TTC ('ctt') were used, but
-# these can be easily changed by the user
-
-df = raw_df[['year','month','conductivity','iron_total','ph','hardness','dbo','ctt']].copy()
-
-# Some variables or parameters can be explored through classification to improve the quality of the analysis
-# In this work, we have also analyzed the classification of TtC, considering a reference classification
+    column_dictionary = {
+        'Alcalinidade Total': 'alcalinity',
+        'Alumínio Dissolvido': 'aluminum',
+        'Condutividade': 'conductivity',
+        'Ferro Total': 'iron_total',
+        'pH': 'ph',
+        'Dureza': 'hardness',
+        'DBO (5, 20)': 'dbo',
+        'CTt': 'ctt'
+    }
+    raw_df.rename(columns=column_dictionary, inplace=True)
+    raw_df.info()
+    raw_df.describe()
+    return raw_df
 
 def classify_ctt(value):
     if value < 10000:
@@ -113,165 +97,77 @@ def classify_ctt(value):
     else:
         return 2
 
-# Apply the custom function to the 'ctt' column
-df['ctt_original'] = df['ctt']
-df['ctt'] = df['ctt'].apply(classify_ctt)
+def clean_data(raw_df, config):
+    """Cleans and prepares the data for analysis."""
+    df = raw_df[['year','month','conductivity','iron_total','ph','hardness','dbo','ctt']].copy()
+    df['ctt_original'] = df['ctt']
+    df['ctt'] = df['ctt'].apply(classify_ctt)
+    df['season'] = df['year'].astype(str) + '_' + df['month'].astype(str)
+    df.drop(['year', 'month'], axis=1, inplace=True)
+    ids_to_drop = config['ids_to_drop']
+    mask = ~df['season'].isin(ids_to_drop)
+    filtered_df = df[mask]
+    return filtered_df, df
 
-# Create a new ID column considering both the month and year, to better identify each data row.
-# This is important because we have to remove the months we will not use from the dataset (e.g. months
-# that do not belong to the hydrological years we will analyze)
+def create_hydrological_year_datasets(filtered_df, config):
+    """Creates datasets for flood, normal, and drought years."""
+    flood = filtered_df[filtered_df['season'].isin(config['flood_year'])].copy()
+    normal = filtered_df[filtered_df['season'].isin(config['normal_year'])].copy()
+    drought = filtered_df[filtered_df['season'].isin(config['drought_year'])].copy()
 
-df['season'] = df['year'].astype(str) + '_' + df['month'].astype(str)
+    flood['original_index'] = flood.index
+    normal['original_index'] = normal.index
+    drought['original_index'] = drought.index
 
-# Eliminate the year and month columns, as they will not be used anymore
+    flood = flood.reset_index(drop=True)
+    normal = normal.reset_index(drop=True)
+    drought = drought.reset_index(drop=True)
 
-df.drop(['year', 'month'], axis=1, inplace=True)
+    return flood, normal, drought
 
-# Remove the months that will not be used from the dataset
+def create_feature_subsets(flood, normal, drought):
+    """Creates feature subsets for clustering."""
+    flood_no_index = flood.drop(columns=['original_index'])
+    normal_no_index = normal.drop(columns=['original_index'])
+    drought_no_index = drought.drop(columns=['original_index'])
 
-ids_to_drop = ['2011_1', '2011_2', '2011_5', '2011_6', '2011_7', '2011_8',
-       '2015_10', '2015_11', '2015_12', '2016_1', '2016_2', '2016_3',
-       '2016_5', '2016_6', '2016_7', '2016_8', '2016_11', '2016_12',
-       '2017_1', '2017_2', '2017_5', '2017_6', '2017_7', '2017_8',
-       '2017_11', '2017_12']
+    flood_soil_indices = flood[['ph', 'conductivity']]
+    flood_irrigation_indices = flood[['iron_total', 'hardness','dbo','ctt']]
+    flood_all_indices = flood_no_index.copy()
+    flood_all_indices.drop(columns=['ctt_original','season'], inplace=True)
 
-mask = ~df['season'].isin(ids_to_drop)
+    normal_soil_indices = normal[['ph', 'conductivity']]
+    normal_irrigation_indices = normal[['iron_total', 'hardness','dbo','ctt']]
+    normal_all_indices = normal_no_index.copy()
+    normal_all_indices.drop(columns=['ctt_original','season'], inplace=True)
 
-filtered_df = df[mask]
+    drought_soil_indices = drought[['ph', 'conductivity']]
+    drought_irrigation_indices = drought[['iron_total', 'hardness','dbo','ctt']]
+    drought_all_indices = drought_no_index.copy()
+    drought_all_indices.drop(columns=['ctt_original','season'], inplace=True)
 
-# Check the filtered dataset
+    datasets = {
+        'flood_soil_indices': flood_soil_indices,
+        'flood_irrigation_indices': flood_irrigation_indices,
+        'flood_all_indices': flood_all_indices,
+        'normal_soil_indices': normal_soil_indices,
+        'normal_irrigation_indices': normal_irrigation_indices,
+        'normal_all_indices': normal_all_indices,
+        'drought_soil_indices': drought_soil_indices,
+        'drought_irrigation_indices': drought_irrigation_indices,
+        'drought_all_indices': drought_all_indices
+    }
+    return datasets
 
-filtered_df
-
-# Plotting values to compare the original TtC values (first chart) and the TtC classification values (second chart)
-# Using the classification makes it easier to differentiate the data
-
-filtered_df.ctt_original.plot.kde()
-plt.show()
-plt.close()
-
-filtered_df.ctt.plot.kde()
-plt.show()
-plt.close()
-
-# Plotting values to compare the boxplot analysis of the original TtC values (first chart) and the TtC classification values
-# (second chart)
-# Using the classification reduces the impact of outliers
-
-plt.boxplot(filtered_df.ctt_original)
-plt.show()
-plt.close()
-
-plt.boxplot(filtered_df.ctt)
-plt.show()
-plt.close()
-
-"""#4. Creating hydrological years datasets"""
-
-# Define the hydrological years for each dataset
-flood_year = ['2011_11', '2011_12', '2012_1', '2012_2', '2012_5', '2012_6', '2012_7', '2012_8']
-normal_year = ['2012_11', '2012_12', '2013_1', '2013_2', '2013_5', '2013_6', '2013_7', '2013_8']
-drought_year = ['2014_10', '2014_11', '2014_12', '2015_1', '2015_2', '2015_3', '2015_4', '2015_5', '2015_6', '2015_7', '2015_8']
-
-# Create datasets based on the conditions above
-flood = filtered_df[filtered_df['season'].isin(flood_year)]
-normal = filtered_df[filtered_df['season'].isin(normal_year)]
-drought = filtered_df[filtered_df['season'].isin(drought_year)]
-
-# Add original index to each dataset
-flood['original_index'] = flood.index
-normal['original_index'] = normal.index
-drought['original_index'] = drought.index
-
-# Reindex the datasets
-flood = flood.reset_index(drop=True)
-normal = normal.reset_index(drop=True)
-drought = drought.reset_index(drop=True)
-
-# Check one of the datasets to check if the processing was correct (e.g., checking the 'drought' dataset)
-
-drought
-
-# Create datasets without the indices (it will be important for processing)
-
-flood_no_index = flood.drop(columns=['original_index'])
-normal_no_index = normal.drop(columns=['original_index'])
-drought_no_index = drought.drop(columns=['original_index'])
-
-# Check one of the datasets to check if the processing was correct (e.g., checking the 'flood' dataset)
-
-flood_no_index
-
-# Create the datasets for each index category (each will run a clustering model later)
-
-flood_soil_indices = flood[['ph', 'conductivity']]
-flood_irrigation_indices = flood[['iron_total', 'hardness','dbo','ctt']]
-flood_all_indices = flood_no_index.copy()
-flood_all_indices.drop(columns=['ctt_original','season'], inplace=True)
-
-normal_soil_indices = normal[['ph', 'conductivity']]
-normal_irrigation_indices = normal[['iron_total', 'hardness','dbo','ctt']]
-normal_all_indices = normal_no_index.copy()
-normal_all_indices.drop(columns=['ctt_original','season'], inplace=True)
-
-drought_soil_indices = drought[['ph', 'conductivity']]
-drought_irrigation_indices = drought[['iron_total', 'hardness','dbo','ctt']]
-drought_all_indices = drought_no_index.copy()
-drought_all_indices.drop(columns=['ctt_original','season'], inplace=True)
-
-# Check one of the datasets to see if the processing was correct
-# (e.g., checking the 'soil_indices' dataset for the 'flood' year)
-
-flood_soil_indices
-
-# Check one of the datasets to see if the processing was correct
-# (e.g., checking the 'irrigation_indices' dataset for the 'flood' year)
-
-flood_irrigation_indices
-
-"""#5. Finding the optimal value for k for each scenario"""
-
-# K is the most important hyperparameter for the k-means clustering (for other models, this section should
-# contain the analysis for the respective hyperparameters)
-# We will use three different methods to identify the best value for k: elbow method, sillhouette, and dendrogram
-
-# Function for finding the best value of k using WCSS (an important quality metric to compare values of k) and the elbow method
-
-def find_optimal_k_elbow(data, dataset_name):
-    # Create a dictionary for the WCSS values
-    wcss = []
-
-    # Scale the data using the standard scaler technique (will improve the quality of the clustering method
-    # In some cases, the minmax scaler is more recommended, but we had good results with the standard z scaler)
-    scaler = StandardScaler()
-    scaled_data = scaler.fit_transform(data)
-
-    # Calculate WCSS for k for a range of values. We considered from 1 to 10, but more values could be considered
-    for k in range(1, 11):
-        kmeans = KMeans(n_clusters=k, init='k-means++', random_state=42)
-        kmeans.fit(scaled_data)
-        wcss.append(kmeans.inertia_)
-
-    # Plot the elbow method graph (which must be analyzed by the user)
-    plt.plot(range(1, 11), wcss, marker='o', linestyle='-')
-    plt.title(f'Elbow Method ({dataset_name})')
-    plt.xlabel('Number of Clusters (k value)')
-    plt.ylabel('WCSS')
-    plt.legend()
-    plt.show()
-
-# Function to find the best value of k for a dataset using the silhouette score (another quality metric)
 
 def find_optimal_k_silhouette(data, dataset_name):
-    # Define base parameters
+    """Finds the optimal k for a dataset using the silhouette score."""
     max_silhouette_score = -1
     optimal_k = 2
 
-    # Scale the data using the standard scaler (same comment as before)
     scaler = StandardScaler()
     scaled_data = scaler.fit_transform(data)
 
-    # Calculate silhouette score for k from 2 to 10 using the k-means++ method
     for k in range(2, 11):
         kmeans = KMeans(n_clusters=k, init='k-means++', random_state=42)
         labels = kmeans.fit_predict(scaled_data)
@@ -279,789 +175,232 @@ def find_optimal_k_silhouette(data, dataset_name):
         if silhouette_avg > max_silhouette_score:
             max_silhouette_score = silhouette_avg
             optimal_k = k
-
-    # Print the optimal value for k considering the silhouette score
-    print(f"Optimal k (Silhouette Score - {dataset_name}):", optimal_k)
+    print(f"Optimal k for {dataset_name} is {optimal_k}")
     return optimal_k
 
-# Function to find the best value for k using the dendrogram method (with the ward technique)
-
-def find_optimal_k_dendrogram(data, dataset_name):
-    # Calculate the linkage matrix
-    Z = linkage(data, method='ward')
-
-    # Plot the dendrogram
-    plt.figure(figsize=(10, 5))
-    dendrogram(Z)
-    plt.title(f'Dendrogram ({dataset_name})')
-    plt.xlabel('Sample Index')
-    plt.ylabel('Distance')
-    plt.show()
-
-# Code to loop and generate results for the three techniques for each dataset (a dataset in this work
-# is a combination of the indices used and the hydrological year)
-
-# Define the dictionary of the final datasets
-datasets = {'flood_soil_indices': flood_soil_indices,
-            'flood_irrigation_indices': flood_irrigation_indices,
-            'flood_all_indices': flood_all_indices,
-            'normal_soil_indices': normal_soil_indices,
-            'normal_irrigation_indices': normal_irrigation_indices,
-            'normal_all_indices': normal_all_indices,
-            'drought_soil_indices':drought_soil_indices,
-            'drought_irrigation_indices':drought_irrigation_indices,
-            'drought_all_indices':drought_all_indices
-            }
-
-# Create a list of the best values for k
-optimal_ks = []
-
-# For loop to iterate between methods and datasets
-for dataset_name, dataset in datasets.items():
-    print("Dataset:", dataset_name)
-    print("-------------------------")
-
-    # Finding optimal k for each method
-
-    # It is important to note that the elbow method needs manual evaluation
-    optimal_k_elbow = find_optimal_k_elbow(dataset, dataset_name)
-    print("\n")
-    optimal_k_silhouette = find_optimal_k_silhouette(dataset, dataset_name)
-    print("\n")
-    # It is important to note that the dendrogram needs manual evaluation
-    find_optimal_k_dendrogram(dataset, dataset_name)
-
-    print("\n")
-
-"""#6. Analyzing values for k"""
-
-# Analyze each combination of dataset and method to define best values for k. In this work, we have decided to consider
-# a majority vote for choosing the best value of k (considering the results of step 5).
-
-# 1-Summary of the best values (considering majority vote in case of draw)
-
-# - flood_soil_indices: 2
-# - flood_irrigation_indices: 3
-# - flood_all_indices: 2
-# - normal_soil_indices: 4
-# - normal_irrigation_indices: 3
-# - normal_all_indices: 3
-# - drought_soil_indices: 4
-# - drought_irrigation_indices: 3
-# - drought_all_indices: 2
-
-# 2-Detailed analysis (considering all potential values)
-
-# flood_soil_indices
-# - elbow: 2 or 3
-# - silhouette: 2
-# - dendrogram: 2 or 3
-# - majority: 2
-
-# flood_irrigation_indices
-# - elbow: 2 or 3
-# - silhouette: 2
-# - dendrogram: 2 or 3 (probably 3)
-# - majority: 3
-
-# flood_all_indices
-# - elbow: 2 or 3
-# - silhouette: 2
-# - dendrogram: 2
-# - majority: 2
-
-# normal_soil_indices
-# - elbow: 3 or 4
-# - silhouette: 3
-# - dendrogram: 2 or 4
-# - majority: 4
-
-# normal_irrigation_indices
-# - elbow: 2 or 3
-# - silhouette: 2
-# - dendrogram: 3 or 4
-# - majority: 3
-
-# normal_all_indices
-# - elbow: 2 or 3
-# - silhouette: 3
-# - dendrogram: 2
-# - majority: 3
-
-# drought_soil_indices
-# - elbow: 3 or 4
-# - silhouette: 2
-# - dendrogram: 2 or 4
-# - majority: 4
-
-# drought_irrigation_indices
-# - elbow: 2 or 3
-# - silhouette: 2
-# - dendrogram: 2 or 3 (probably 3)
-# - majority: 3
-
-# drought_all_indices
-# - elbow: 2 or 3
-# - silhouette: 2
-# - dendrogram: 2
-# - majority: 2
-
-# Best values of k considering the majority vote of the analysis above
-
-k_flood_soil_indices = 2
-k_flood_irrigation_indices = 3
-k_flood_all_indices = 2
-k_normal_soil_indices = 4
-k_normal_irrigation_indices = 3
-k_normal_all_indices = 3
-k_drought_soil_indices = 4
-k_drought_irrigation_indices = 3
-k_drought_all_indices = 2
-
-"""#7. Running the clustering model for each scenario"""
-
-# Function that will automatically rename a cluster label based on the average a feature
-# This is important because the cluster labels have no connection with the values of the features themselves
-# (they are just sequential values)
 
 def rename_cluster_labels(data, labels):
+    """Renames cluster labels based on the mean of the first feature."""
     data['label'] = labels
-
-    # We consider in this code renaming by the first column in the dataset, because each dataset has different variables
-    # However it would be possible to insert a dictionary here and choose specific columns
     feature_column = data.columns[0]
-
     cluster_means = data.groupby('label')[feature_column].mean()
     cluster_means_sorted = cluster_means.sort_values().index
     label_map = {cluster_means_sorted[i]: i for i in range(len(cluster_means_sorted))}
     data['label'] = data['label'].map(label_map)
     return data['label']
 
-# Code to loop through all the datasets, using the best value of k, clustering using the k-means method,
-# and then renaming the cluster labels so the order is related to the mean values of the first column of the dataset
-# Then, print all cluster means for each dataset
+def run_clustering(datasets):
+    """Runs k-means clustering on the datasets, finding the optimal k for each."""
+    for dataset_name, dataset in datasets.items():
+        optimal_k = find_optimal_k_silhouette(dataset, dataset_name)
+        scaler = StandardScaler()
+        scaled_features = scaler.fit_transform(dataset)
+        kmeans = KMeans(n_clusters=optimal_k, init='k-means++', random_state=42)
+        labels = kmeans.fit_predict(scaled_features)
+        dataset['label'] = rename_cluster_labels(dataset.copy(), labels)
+        dataset.rename(columns={'label': dataset_name + '_label'}, inplace=True)
 
-# Create the list of datasets
-datasets = ['flood_soil_indices', 'flood_irrigation_indices', 'flood_all_indices',
-            'normal_soil_indices', 'normal_irrigation_indices', 'normal_all_indices',
-            'drought_soil_indices', 'drought_irrigation_indices', 'drought_all_indices']
+    return datasets
 
-# Loop through the datasets list
-for dataset_name in datasets:
 
-    # Get the best value of k for the current dataset (calculated above based on the majority of the 3 methods)
-    k_value = globals()['k_' + dataset_name]
+def add_cluster_labels_to_main_dataframes(clustered_datasets, flood, normal, drought):
+    """Adds the cluster labels to the main dataframes."""
+    flood_datasets = ['flood_soil_indices', 'flood_irrigation_indices', 'flood_all_indices']
+    normal_datasets = ['normal_soil_indices', 'normal_irrigation_indices', 'normal_all_indices']
+    drought_datasets = ['drought_soil_indices', 'drought_irrigation_indices', 'drought_all_indices']
 
-    # Retrieve the dataset original dataset
-    dataset = globals()[dataset_name]
+    for dataset_name in flood_datasets:
+        label_column = dataset_name + '_label'
+        flood[label_column] = clustered_datasets[dataset_name][label_column]
 
-    # Run k-means clustering
-    scaler = StandardScaler()
-    scaled_features = scaler.fit_transform(dataset)
+    for dataset_name in normal_datasets:
+        label_column = dataset_name + '_label'
+        normal[label_column] = clustered_datasets[dataset_name][label_column]
 
-    kmeans = KMeans(n_clusters=k_value, init='k-means++', random_state=42)
-    labels = kmeans.fit_predict(dataset)
+    for dataset_name in drought_datasets:
+        label_column = dataset_name + '_label'
+        drought[label_column] = clustered_datasets[dataset_name][label_column]
 
-    # Rename the cluster labels, considering the function that sorts values of the first column
-    dataset['label'] = rename_cluster_labels(dataset, labels)
+    return flood, normal, drought
 
-    # Rename the label column to include the dataset name
-    dataset.rename(columns={'label': dataset_name + '_label'}, inplace=True)
+def add_location_data(flood, normal, drought, raw_df, df):
+    """Adds location data back to the dataframes."""
+    columns_to_add = ['latitude_decimal', 'longitude_decimal', 'cod_interaguas']
+    season_column = 'season'
 
-# Check if the rows were correctly labelled for one of the datasets
+    for dataset in [flood, normal, drought]:
+        original_indices = dataset['original_index']
+        selected_raw_df = raw_df.loc[original_indices, columns_to_add]
+        selected_df = df.loc[original_indices, [season_column]]
+        dataset[columns_to_add] = selected_raw_df.values
+        dataset[season_column] = selected_df[season_column].values
 
-flood_soil_indices
+    return flood, normal, drought
 
-# Check if the rows were correctly labelled for other dataset
+def create_geo_dataframes(flood, normal, drought, shapefile_path):
+    """Converts dataframes to GeoDataFrames."""
+    shapefile = gpd.read_file(shapefile_path)
 
-flood_irrigation_indices
+    geometry = [Point(xy) for xy in zip(flood['longitude_decimal'], flood['latitude_decimal'])]
+    flood_gdf = gpd.GeoDataFrame(flood, geometry=geometry, crs=shapefile.crs)
 
-# Add the cluster label columns to the original datasets
+    geometry = [Point(xy) for xy in zip(normal['longitude_decimal'], normal['latitude_decimal'])]
+    normal_gdf = gpd.GeoDataFrame(normal, geometry=geometry, crs=shapefile.crs)
 
-flood_datasets = ['flood_soil_indices', 'flood_irrigation_indices', 'flood_all_indices']
-normal_datasets = ['normal_soil_indices', 'normal_irrigation_indices', 'normal_all_indices']
-drought_datasets = ['drought_soil_indices', 'drought_irrigation_indices', 'drought_all_indices']
+    geometry = [Point(xy) for xy in zip(drought['longitude_decimal'], drought['latitude_decimal'])]
+    drought_gdf = gpd.GeoDataFrame(drought, geometry=geometry, crs=shapefile.crs)
 
-for dataset_name in flood_datasets:
-    label_column = dataset_name + '_label'
-    flood[label_column] = globals()[dataset_name][dataset_name + '_label']
+    return flood_gdf, normal_gdf, drought_gdf, shapefile
 
-for dataset_name in normal_datasets:
-    label_column = dataset_name + '_label'
-    normal[label_column] = globals()[dataset_name][dataset_name + '_label']
 
-for dataset_name in drought_datasets:
-    label_column = dataset_name + '_label'
-    drought[label_column] = globals()[dataset_name][dataset_name + '_label']
-
-# Check if the cluster label column was correctly added to one of the original datasets
-
-flood.head()
-
-"""#8. Adding the location back to the scenarios"""
-
-# Define the location columns to be added (in the case of this dataset, latitude, longitude, and the
-# station ID)
-
-columns_to_add = ['latitude_decimal', 'longitude_decimal', 'cod_interaguas']
-season_column = 'season'
-
-# Loop through each of the original datasets in turn: flood, normal, and drought
-for dataset_name in ['flood', 'normal', 'drought']:
-
-    # Retrieve the original dataset
-    dataset = globals()[dataset_name]
-
-    # Get the original indices from the 'original_index' column
-    original_indices = dataset['original_index']
-
-    # Select the corresponding rows from the raw dataset ('raw_df') based on the 'original_index' column
-    selected_raw_df = raw_df.loc[original_indices, columns_to_add]
-
-    # Select the corresponding rows from the clean dataset ('df') based on the 'original_index' column
-    selected_df = df.loc[original_indices, [season_column]]
-
-    # Add the selected columns from 'raw_df' and 'df' to the current dataset
-    dataset[columns_to_add] = selected_raw_df.values
-    dataset[season_column] = selected_df[season_column].values
-
-# Check if the cluster labels were correctly added to one of the datasets
-
-drought.tail()
-
-"""#9. Mapping the stations using the basin shapefile"""
-
-# Load the basin shapefile
-
-shapefile_path = '/content/drive/MyDrive/Agri Rios 2024/Artigo Agriengineering - AgriRios 2024/dados/GEOFT_BHO_PCJ_TDR/GEOFT_BHO_PCJ_TDR.shp'
-shapefile = gpd.read_file(shapefile_path)
-
-# Convert the 'flood' dataframe to a GeoDataFrame
-
-geometry = [Point(xy) for xy in zip(flood['longitude_decimal'], flood['latitude_decimal'])]
-flood_gdf = gpd.GeoDataFrame(flood, geometry=geometry, crs=shapefile.crs)
-
-# Convert the 'normal' dataframe to a GeoDataFrame
-
-geometry = [Point(xy) for xy in zip(normal['longitude_decimal'], normal['latitude_decimal'])]
-normal_gdf = gpd.GeoDataFrame(normal, geometry=geometry, crs=shapefile.crs)
-
-# Convert the 'drought' dataframe to a GeoDataFrame
-
-geometry = [Point(xy) for xy in zip(drought['longitude_decimal'], drought['latitude_decimal'])]
-drought_gdf = gpd.GeoDataFrame(drought, geometry=geometry, crs=shapefile.crs)
-
-# Plot the map for one of the datasets to check the locations of the stations
-
-# Plot the shapefile first
-fig, ax = plt.subplots(figsize=(10, 10))
-shapefile.plot(ax=ax, color='lightblue', zorder=1)
-
-# Plot the points from the 'flood' dataframe on top of the shapefile
-flood_gdf.plot(ax=ax, color='red', markersize=10, label='Stations', zorder=2)
-
-# Add title and legend
-plt.title('Stations map - Flood year')
-plt.legend()
-
-"""#10. Analyze the distributions for the input variables or parameters"""
-
-# Choose which variables or parameters will be analyzed for the flood dataset
-
-variables_of_interest = ['conductivity', 'iron_total', 'ph', 'hardness', 'dbo', 'ctt', 'ctt_original']
-
-# Calculate the basic statistics for each variable
-
-basic_stats = flood_gdf[variables_of_interest].describe()
-print(basic_stats)
-
-# Draw KDE distributions for each column
-
-for variable in variables_of_interest:
-    sns.displot(flood_gdf[variable], kde=True, rug=True, color='skyblue', label='KDE')
-    plt.title(f'KDE Distribution for {variable} for dataset {dataset}')
-    plt.xlabel(variable)
-    plt.ylabel('Density')
-    plt.show()
-
-# Create boxplots for each column
-
-for variable in variables_of_interest:
-    sns.boxplot(x=flood_gdf[variable], color='lightblue')
-    plt.title(f'Boxplot for {variable} for dataset {dataset}')
-    plt.xlabel(variable)
-    plt.show()
-
-# Choose which variables or parameters will be analyzed for the normal dataset
-
-variables_of_interest = ['conductivity', 'iron_total', 'ph', 'hardness', 'dbo', 'ctt', 'ctt_original']
-
-# Calculate the basic statistics for each variable
-
-basic_stats = normal_gdf[variables_of_interest].describe()
-print(basic_stats)
-
-# Draw KDE distributions for each column
-
-for variable in variables_of_interest:
-    sns.displot(normal_gdf[variable], kde=True, rug=True, color='skyblue', label='KDE')
-    plt.title(f'KDE Distribution for {variable} for dataset {dataset}')
-    plt.xlabel(variable)
-    plt.ylabel('Density')
-    plt.show()
-
-# Create boxplots for each column
-
-for variable in variables_of_interest:
-    sns.boxplot(x=normal_gdf[variable], color='lightblue')
-    plt.title(f'Boxplot for {variable} for dataset {dataset}')
-    plt.xlabel(variable)
-    plt.show()
-
-# Choose which variables or parameters will be analyzed for the drought dataset
-
-variables_of_interest = ['conductivity', 'iron_total', 'ph', 'hardness', 'dbo', 'ctt', 'ctt_original']
-
-# Calculate the basic statistics for each variable
-
-basic_stats = drought_gdf[variables_of_interest].describe()
-print(basic_stats)
-
-# Draw KDE distributions for each column
-
-for variable in variables_of_interest:
-    sns.displot(drought_gdf[variable], kde=True, rug=True, color='skyblue', label='KDE')
-    plt.title(f'KDE Distribution for {variable} for dataset {dataset}')
-    plt.xlabel(variable)
-    plt.ylabel('Density')
-    plt.show()
-
-# Create boxplots for each column
-
-for variable in variables_of_interest:
-    sns.boxplot(x=drought_gdf[variable], color='lightblue')
-    plt.title(f'Boxplot for {variable} for dataset {dataset}')
-    plt.xlabel(variable)
-    plt.show()
-
-# Separate the data for the different seasons. S1 is the wet season, and S2 is the dry season
-
-flood_gdf['season'].unique()
-
-flood_gdf_s1 = flood_gdf[flood_gdf['season'].isin(['2011_11', '2011_12', '2012_1', '2012_2'])]
-flood_gdf_s2 = flood_gdf[flood_gdf['season'].isin(['2012_5', '2012_6', '2012_7', '2012_8'])]
-
-normal_gdf['season'].unique()
-
-normal_gdf_s1 = normal_gdf[normal_gdf['season'].isin(['2012_11', '2012_12', '2013_1', '2013_2'])]
-normal_gdf_s2 = normal_gdf[normal_gdf['season'].isin(['2013_5', '2013_6', '2013_7', '2013_8'])]
-
-drought_gdf['season'].unique()
-
-drought_gdf_s1 = drought_gdf[drought_gdf['season'].isin(['2014_10', '2014_11', '2014_12', '2015_1', '2015_2', '2015_3'])]
-drought_gdf_s2 = drought_gdf[drought_gdf['season'].isin(['2015_4', '2015_5', '2015_6', '2015_7', '2015_8'])]
-
-# Functions to aggregate data by station and then add the majority cluster labels
-# for each station in each scenario (essential to develop maps of aggregated inputs and of cluster labels)
-
-# Define custom aggregation functions
 def majority_value(series):
     return series.mode().iloc[0]
 
 def list_of_values(series):
     return series.tolist()
 
-# Define the aggregation dictionary
-agg_dict = {
-    'latitude_decimal': 'mean',
-    'longitude_decimal': 'mean',
-    'geometry': majority_value,
-    'conductivity': 'mean',
-    'iron_total': 'mean',
-    'ph': 'mean',
-    'hardness': 'mean',
-    'ctt': majority_value,
-    'ctt_original': 'mean',
-    'dbo': 'mean',
-    'flood_soil_indices_label': majority_value,
-    'flood_irrigation_indices_label': majority_value,
-    'flood_all_indices_label': majority_value,
-    'original_index': list_of_values
-}
-
-# Group the data by the unique ID of each station ('cod_interaguas')
-# and aggregate them using the custom aggregation dictionary (essential for building better maps)
-
-flood_gdf = flood_gdf.groupby('cod_interaguas').agg(agg_dict).reset_index()
-
-agg_dict = {
-    'latitude_decimal': 'mean',
-    'longitude_decimal': 'mean',
-    'geometry': majority_value,
-    'conductivity': 'mean',
-    'iron_total': 'mean',
-    'ph': 'mean',
-    'hardness': 'mean',
-    'ctt': majority_value,
-    'ctt_original': 'mean',
-    'dbo': 'mean',
-    'normal_soil_indices_label': majority_value,
-    'normal_irrigation_indices_label': majority_value,
-    'normal_all_indices_label': majority_value,
-    'original_index': list_of_values
-}
-
-
-normal_gdf = normal_gdf.groupby('cod_interaguas').agg(agg_dict).reset_index()
-
-agg_dict = {
-    'latitude_decimal': 'mean',
-    'longitude_decimal': 'mean',
-    'geometry': majority_value,
-    'conductivity': 'mean',
-    'iron_total': 'mean',
-    'ph': 'mean',
-    'hardness': 'mean',
-    'ctt': majority_value,
-    'ctt_original': 'mean',
-    'dbo': 'mean',
-    'drought_soil_indices_label': majority_value,
-    'drought_irrigation_indices_label': majority_value,
-    'drought_all_indices_label': majority_value,
-    'original_index': list_of_values
-}
-
-
-drought_gdf = drought_gdf.groupby('cod_interaguas').agg(agg_dict).reset_index()
-
-# Check one specific line to see if the aggregation and the cluster labels adding worked
-
-drought_gdf[drought_gdf['cod_interaguas'] == 2377]
-
-# Check one dataset to see if the aggregation and the cluster labels adding worked
-
-flood_gdf
-
-# Extract the x and y of all points in each dataset
-
-geometry = [Point(xy) for xy in zip(flood_gdf['longitude_decimal'], flood_gdf['latitude_decimal'])]
-flood_gdf = gpd.GeoDataFrame(flood_gdf, geometry=geometry, crs=shapefile.crs)
-
-geometry = [Point(xy) for xy in zip(normal_gdf['longitude_decimal'], normal_gdf['latitude_decimal'])]
-normal_gdf = gpd.GeoDataFrame(normal_gdf, geometry=geometry, crs=shapefile.crs)
-
-geometry = [Point(xy) for xy in zip(drought_gdf['longitude_decimal'], drought_gdf['latitude_decimal'])]
-drought_gdf = gpd.GeoDataFrame(drought_gdf, geometry=geometry, crs=shapefile.crs)
-
-"""#11. Build maps to improve the spatial analyses of inputs and clusters:"""
-
-# Code for building all maps for the aggregated cluster labels results
-# The subsequent code blocks are the almost the same, but for the individual variables, and considering
-# the quantile of values (because the intervals for the different variables are distinct)
-
-# Define colors for specific cluster values
-value_colors = {
-    0: 'fuchsia',
-    1: 'orange',
-    2: 'black',
-    3: 'purple',
-    4: 'orange'
-}
-
-# Define the datasets and their corresponding variables
-datasets = {
-    'flood_gdf': ['flood_soil_indices_label', 'flood_irrigation_indices_label', 'flood_all_indices_label'],
-    'normal_gdf': ['normal_soil_indices_label', 'normal_irrigation_indices_label', 'normal_all_indices_label'],
-    'drought_gdf': ['drought_soil_indices_label', 'drought_irrigation_indices_label', 'drought_all_indices_label']
-}
-
-# Create the subplots (the first is the full dataset for the hydrological year, the other two are the individual seasons)
-fig, axs = plt.subplots(3, 3, figsize=(15, 15))
-
-for i, (dataset_name, variables) in enumerate(datasets.items()):
-    for j, variable in enumerate(variables):
-        ax = axs[i, j]
-
-        # Plot the shapefile as background with reduced transparency
-        shapefile.plot(ax=ax, color='lightgrey', alpha=0.5, zorder=1)
-
-        # Define the circle size (defined empirically)
-        circle_size = 50
-
-        # Filter out existing values
-        existing_values = globals()[dataset_name][variable].unique()
-
-        # Plot the circles for the chosen variable
-        for value in existing_values:
-            color = value_colors.get(value)
-            if color:
-                filter_values = globals()[dataset_name][globals()[dataset_name][variable] == value]
-                ax.scatter(filter_values.geometry.x, filter_values.geometry.y, color=color, label=f'Cluster {value}', s=circle_size, zorder=2)
-
-        # Create the title
-        ax.set_title(f'Clustering: {variable} - {dataset_name}')
-
-        # Add legend and sort labels
-        handles, labels = ax.get_legend_handles_labels()
-        labels, handles = zip(*sorted(zip(labels, handles), key=lambda x: int(x[0].split()[1])))
-        ax.legend(handles, labels, title='Cluster group', loc='upper right')
-
-# Adjust the layoutlayout
-plt.tight_layout()
-
-# Show the final plot
-plt.show()
-
-# Maps for conductivity
-
-variable_colors = {
-    'conductivity': 'green',
-}
-
-quantiles = [0, 25, 50, 75, 100]
-
-fig, axs = plt.subplots(3, 3, figsize=(15, 15))
-
-for i, (dataset_suffix, suffix_df) in enumerate([('gdf', 'flood'), ('gdf_s1', 'flood'), ('gdf_s2', 'flood'),
-                                                 ('gdf', 'normal'), ('gdf_s1', 'normal'), ('gdf_s2', 'normal'),
-                                                 ('gdf', 'drought'), ('gdf_s1', 'drought'), ('gdf_s2', 'drought')]):
-
-    ax = axs[i // 3, i % 3]
-    shapefile.plot(ax=ax, color='lightblue', alpha=0.3, zorder=1)
-
-    circle_sizes = np.linspace(10, 50, len(quantiles) - 1)
-
-    if len(quantiles) >= 2:
-        for k in range(len(quantiles) - 1):
-            lower_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['conductivity'], quantiles[k])
-            upper_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['conductivity'], quantiles[k + 1])
-            subset = globals()[f'{suffix_df}_{dataset_suffix}'][
-                (globals()[f'{suffix_df}_{dataset_suffix}']['conductivity'] >= lower_bound) &
-                (globals()[f'{suffix_df}_{dataset_suffix}']['conductivity'] <= upper_bound)]
-            circle_size = circle_sizes[k]
-            ax.scatter(subset.geometry.x, subset.geometry.y, color='green',
-                       label=f'conductivity - {quantiles[k]}-{quantiles[k + 1]}%', s=circle_size, zorder=2)
-
-    ax.set_title(f'Quantiles of Conductivity - {suffix_df.capitalize()} {dataset_suffix}')
-
-plt.subplots_adjust(bottom=0.05)
-plt.show()
-
-# Maps for the original TtC values
-
-variable_colors = {
-    'ctt_original': 'blue'
-}
-
-quantiles = [0, 25, 50, 75, 100]
-
-fig, axs = plt.subplots(3, 3, figsize=(15, 15))
-
-for i, (dataset_suffix, suffix_df) in enumerate([('gdf', 'flood'), ('gdf_s1', 'flood'), ('gdf_s2', 'flood'),
-                                                 ('gdf', 'normal'), ('gdf_s1', 'normal'), ('gdf_s2', 'normal'),
-                                                 ('gdf', 'drought'), ('gdf_s1', 'drought'), ('gdf_s2', 'drought')]):
-
-    ax = axs[i // 3, i % 3]
-    shapefile.plot(ax=ax, color='lightblue', alpha=0.3, zorder=1)
-
-    circle_sizes = np.linspace(10, 50, len(quantiles) - 1)
-
-    if len(quantiles) >= 2:
-        for k in range(len(quantiles) - 1):
-            lower_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['ctt_original'], quantiles[k])
-            upper_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['ctt_original'], quantiles[k + 1])
-            subset = globals()[f'{suffix_df}_{dataset_suffix}'][
-                (globals()[f'{suffix_df}_{dataset_suffix}']['ctt_original'] >= lower_bound) &
-                (globals()[f'{suffix_df}_{dataset_suffix}']['ctt_original'] <= upper_bound)]
-            circle_size = circle_sizes[k]
-            ax.scatter(subset.geometry.x, subset.geometry.y, color='blue',
-                       label=f'ctt_original - {quantiles[k]}-{quantiles[k + 1]}%', s=circle_size, zorder=2)
-
-    ax.set_title(f'Quantiles of ctt_original - {suffix_df.capitalize()} {dataset_suffix}')
-
-plt.subplots_adjust(bottom=0.05)
-plt.show()
-
-# Maps for BOD
-
-variable_colors = {
-    'dbo': 'purple',
-}
-
-quantiles = [0, 25, 50, 75, 100]
-
-fig, axs = plt.subplots(3, 3, figsize=(15, 15))
-
-for i, (dataset_suffix, suffix_df) in enumerate([('gdf', 'flood'), ('gdf_s1', 'flood'), ('gdf_s2', 'flood'),
-                                                 ('gdf', 'normal'), ('gdf_s1', 'normal'), ('gdf_s2', 'normal'),
-                                                 ('gdf', 'drought'), ('gdf_s1', 'drought'), ('gdf_s2', 'drought')]):
-
-    ax = axs[i // 3, i % 3]
-    shapefile.plot(ax=ax, color='lightblue', alpha=0.3, zorder=1)
-
-    circle_sizes = np.linspace(10, 50, len(quantiles) - 1)
-
-    if len(quantiles) >= 2:
-        for k in range(len(quantiles) - 1):
-            lower_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['dbo'], quantiles[k])
-            upper_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['dbo'], quantiles[k + 1])
-            subset = globals()[f'{suffix_df}_{dataset_suffix}'][
-                (globals()[f'{suffix_df}_{dataset_suffix}']['dbo'] >= lower_bound) &
-                (globals()[f'{suffix_df}_{dataset_suffix}']['dbo'] <= upper_bound)]
-            circle_size = circle_sizes[k]
-            ax.scatter(subset.geometry.x, subset.geometry.y, color='purple',
-                       label=f'dbo - {quantiles[k]}-{quantiles[k + 1]}%', s=circle_size, zorder=2)
-
-    ax.set_title(f'Quantiles of dbo - {suffix_df.capitalize()} {dataset_suffix}')
-
-plt.subplots_adjust(bottom=0.05)
-plt.show()
-
-# Maps for hardness
-
-variable_colors = {
-    'hardness': 'orange',
-}
-
-quantiles = [0, 25, 50, 75, 100]
-
-fig, axs = plt.subplots(3, 3, figsize=(15, 15))
-
-for i, (dataset_suffix, suffix_df) in enumerate([('gdf', 'flood'), ('gdf_s1', 'flood'), ('gdf_s2', 'flood'),
-                                                 ('gdf', 'normal'), ('gdf_s1', 'normal'), ('gdf_s2', 'normal'),
-                                                 ('gdf', 'drought'), ('gdf_s1', 'drought'), ('gdf_s2', 'drought')]):
-
-    ax = axs[i // 3, i % 3]
-    shapefile.plot(ax=ax, color='lightblue', alpha=0.3, zorder=1)
-
-    circle_sizes = np.linspace(10, 50, len(quantiles) - 1)
-
-    if len(quantiles) >= 2:
-        for k in range(len(quantiles) - 1):
-            lower_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['hardness'], quantiles[k])
-            upper_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['hardness'], quantiles[k + 1])
-            subset = globals()[f'{suffix_df}_{dataset_suffix}'][
-                (globals()[f'{suffix_df}_{dataset_suffix}']['hardness'] >= lower_bound) &
-                (globals()[f'{suffix_df}_{dataset_suffix}']['hardness'] <= upper_bound)]
-            circle_size = circle_sizes[k]
-            ax.scatter(subset.geometry.x, subset.geometry.y, color='orange',
-                       label=f'hardness - {quantiles[k]}-{quantiles[k + 1]}%', s=circle_size, zorder=2)
-
-    ax.set_title(f'Quantiles of hardness - {suffix_df.capitalize()} {dataset_suffix}')
-
-plt.subplots_adjust(bottom=0.05)
-plt.show()
-
-# Maps for pH
-
-variable_colors = {
-    'ph': 'black',
-}
-
-quantiles = [0, 25, 50, 75, 100]
-
-fig, axs = plt.subplots(3, 3, figsize=(15, 15))
-
-for i, (dataset_suffix, suffix_df) in enumerate([('gdf', 'flood'), ('gdf_s1', 'flood'), ('gdf_s2', 'flood'),
-                                                 ('gdf', 'normal'), ('gdf_s1', 'normal'), ('gdf_s2', 'normal'),
-                                                 ('gdf', 'drought'), ('gdf_s1', 'drought'), ('gdf_s2', 'drought')]):
-
-    ax = axs[i // 3, i % 3]
-    shapefile.plot(ax=ax, color='lightblue', alpha=0.3, zorder=1)
-
-    circle_sizes = np.linspace(10, 50, len(quantiles) - 1)
-
-    if len(quantiles) >= 2:
-        for k in range(len(quantiles) - 1):
-            lower_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['ph'], quantiles[k])
-            upper_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['ph'], quantiles[k + 1])
-            subset = globals()[f'{suffix_df}_{dataset_suffix}'][
-                (globals()[f'{suffix_df}_{dataset_suffix}']['ph'] >= lower_bound) &
-                (globals()[f'{suffix_df}_{dataset_suffix}']['ph'] <= upper_bound)]
-            circle_size = circle_sizes[k]
-            ax.scatter(subset.geometry.x, subset.geometry.y, color='black',
-                       label=f'ph - {quantiles[k]}-{quantiles[k + 1]}%', s=circle_size, zorder=2)
-
-    ax.set_title(f'Quantiles of ph - {suffix_df.capitalize()} {dataset_suffix}')
-
-plt.subplots_adjust(bottom=0.05)
-plt.show()
-
-# Maps for total iron
-
-variable_colors = {
-    'iron_total': 'red',
-}
-
-quantiles = [0, 25, 50, 75, 100]
-
-fig, axs = plt.subplots(3, 3, figsize=(15, 15))
-
-for i, (dataset_suffix, suffix_df) in enumerate([('gdf', 'flood'), ('gdf_s1', 'flood'), ('gdf_s2', 'flood'),
-                                                 ('gdf', 'normal'), ('gdf_s1', 'normal'), ('gdf_s2', 'normal'),
-                                                 ('gdf', 'drought'), ('gdf_s1', 'drought'), ('gdf_s2', 'drought')]):
-
-    ax = axs[i // 3, i % 3]
-    shapefile.plot(ax=ax, color='lightblue', alpha=0.3, zorder=1)
-
-    circle_sizes = np.linspace(10, 50, len(quantiles) - 1)
-
-    if len(quantiles) >= 2:
-        for k in range(len(quantiles) - 1):
-            lower_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['iron_total'], quantiles[k])
-            upper_bound = np.percentile(globals()[f'{suffix_df}_{dataset_suffix}']['iron_total'], quantiles[k + 1])
-            subset = globals()[f'{suffix_df}_{dataset_suffix}'][
-                (globals()[f'{suffix_df}_{dataset_suffix}']['iron_total'] >= lower_bound) &
-                (globals()[f'{suffix_df}_{dataset_suffix}']['iron_total'] <= upper_bound)]
-            circle_size = circle_sizes[k]
-            ax.scatter(subset.geometry.x, subset.geometry.y, color='red',
-                       label=f'iron_total - {quantiles[k]}-{quantiles[k + 1]}%', s=circle_size, zorder=2)
-
-    ax.set_title(f'Quantiles of iron_total - {suffix_df.capitalize()} {dataset_suffix}')
-
-plt.subplots_adjust(bottom=0.05)
-plt.show()
-
-"""#12. Create a dataset with the main statistical metrics for each variable or parameter"""
-
-# Create a dataset with the main statistical metrics (mean, std, coefficient of variation,
-# minimum, and maximum values) for each variable and dataset
-
-# Define the datasets
-datasets = {
-    'flood_gdf': flood_gdf,
-    'normal_gdf': normal_gdf,
-    'drought_gdf': drought_gdf
-}
-
-# Define the variables to be summarized
-variables = ['conductivity', 'iron_total', 'ph', 'hardness','dbo', 'ctt', 'ctt_original']
-
-# Create an empty list to store the results
-results = []
-
-# Loop for iterating over each dataset
-for dataset_name, dataset in datasets.items():
-
-    # Loop for iterating over each variable
-    for variable in variables:
-
-        # Calculate the statistical metrics (it is possible to add more metrics)
-        mean_val = dataset[variable].mean()
-        std_val = dataset[variable].std()
-        coef_var = (std_val / mean_val) * 100
-        min_val = dataset[variable].min()
-        max_val = dataset[variable].max()
-
-        # Append the statistics to the results list
-        results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'mean', 'Value': mean_val})
-        results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'std', 'Value': std_val})
-        results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'coef_var', 'Value': coef_var})
-        results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'min', 'Value': min_val})
-        results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'max', 'Value': max_val})
-
-# Create a DataFrame from the results list
-stats_df = pd.DataFrame(results)
-
-# Print the DataFrame
-stats_df
+def create_seasonal_datasets(flood_gdf, normal_gdf, drought_gdf):
+    """Creates seasonal datasets."""
+    flood_gdf_s1 = flood_gdf[flood_gdf['season'].isin(['2011_11', '2011_12', '2012_1', '2012_2'])]
+    flood_gdf_s2 = flood_gdf[flood_gdf['season'].isin(['2012_5', '2012_6', '2012_7', '2012_8'])]
+    normal_gdf_s1 = normal_gdf[normal_gdf['season'].isin(['2012_11', '2012_12', '2013_1', '2013_2'])]
+    normal_gdf_s2 = normal_gdf[normal_gdf['season'].isin(['2013_5', '2013_6', '2013_7', '2013_8'])]
+    drought_gdf_s1 = drought_gdf[drought_gdf['season'].isin(['2014_10', '2014_11', '2014_12', '2015_1', '2015_2', '2015_3'])]
+    drought_gdf_s2 = drought_gdf[drought_gdf['season'].isin(['2015_4', '2015_5', '2015_6', '2015_7', '2015_8'])]
+    return flood_gdf_s1, flood_gdf_s2, normal_gdf_s1, normal_gdf_s2, drought_gdf_s1, drought_gdf_s2
+
+def aggregate_data_by_station(flood_gdf, normal_gdf, drought_gdf):
+    """Aggregates data by station."""
+    def get_agg_dict(prefix):
+        return {
+            'latitude_decimal': 'mean',
+            'longitude_decimal': 'mean',
+            'geometry': majority_value,
+            'conductivity': 'mean',
+            'iron_total': 'mean',
+            'ph': 'mean',
+            'hardness': 'mean',
+            'ctt': majority_value,
+            'ctt_original': 'mean',
+            'dbo': 'mean',
+            f'{prefix}_soil_indices_label': majority_value,
+            f'{prefix}_irrigation_indices_label': majority_value,
+            f'{prefix}_all_indices_label': majority_value,
+            'original_index': list_of_values
+        }
+
+    flood_gdf = flood_gdf.groupby('cod_interaguas').agg(get_agg_dict('flood')).reset_index()
+    normal_gdf = normal_gdf.groupby('cod_interaguas').agg(get_agg_dict('normal')).reset_index()
+    drought_gdf = drought_gdf.groupby('cod_interaguas').agg(get_agg_dict('drought')).reset_index()
+
+    return flood_gdf, normal_gdf, drought_gdf
+
+def plot_cluster_maps(datasets, shapefile):
+    """Plots maps of the clustering results."""
+    value_colors = {0: 'fuchsia', 1: 'orange', 2: 'black', 3: 'purple', 4: 'orange'}
+    fig, axs = plt.subplots(3, 3, figsize=(15, 15))
+    dataset_names = list(datasets.keys())
+    for i, (dataset_name, gdf) in enumerate(datasets.items()):
+        for j, variable in enumerate(datasets[dataset_name]):
+            ax = axs[i, j]
+            shapefile.plot(ax=ax, color='lightgrey', alpha=0.5, zorder=1)
+            circle_size = 50
+            existing_values = gdf[variable].unique()
+            for value in existing_values:
+                color = value_colors.get(value)
+                if color:
+                    filter_values = gdf[gdf[variable] == value]
+                    ax.scatter(filter_values.geometry.x, filter_values.geometry.y, color=color, label=f'Cluster {value}', s=circle_size, zorder=2)
+            ax.set_title(f'Clustering: {variable} - {dataset_name}')
+            handles, labels = ax.get_legend_handles_labels()
+            labels, handles = zip(*sorted(zip(labels, handles), key=lambda x: int(x[0].split()[1])))
+            ax.legend(handles, labels, title='Cluster group', loc='upper right')
+    plt.tight_layout()
+    plt.show()
+
+def plot_variable_maps(gdfs, shapefile, config):
+    """Plots maps of the variables."""
+    variables = config['variables_of_interest']
+    colors = config['variable_colors']
+    quantiles = [0, 25, 50, 75, 100]
+
+    for var in variables:
+        if var not in colors:
+            continue
+        fig, axs = plt.subplots(3, 3, figsize=(15, 15))
+        for i, (gdf_name, gdf) in enumerate(gdfs.items()):
+            ax = axs[i // 3, i % 3]
+            shapefile.plot(ax=ax, color='lightblue', alpha=0.3, zorder=1)
+            circle_sizes = np.linspace(10, 50, len(quantiles) - 1)
+            if len(quantiles) >= 2:
+                for k in range(len(quantiles) - 1):
+                    lower_bound = np.percentile(gdf[var], quantiles[k])
+                    upper_bound = np.percentile(gdf[var], quantiles[k + 1])
+                    subset = gdf[(gdf[var] >= lower_bound) & (gdf[var] <= upper_bound)]
+                    circle_size = circle_sizes[k]
+                    ax.scatter(subset.geometry.x, subset.geometry.y, color=colors[var],
+                               label=f'{quantiles[k]}-{quantiles[k + 1]}%', s=circle_size, zorder=2)
+            ax.set_title(f'Quantiles of {var} - {gdf_name}')
+        plt.subplots_adjust(bottom=0.05)
+        plt.show()
+
+def generate_summary_statistics(gdfs, config):
+    """Generates a dataframe with summary statistics."""
+    variables = config['variables_of_interest']
+    results = []
+    for dataset_name, dataset in gdfs.items():
+        for variable in variables:
+            mean_val = dataset[variable].mean()
+            std_val = dataset[variable].std()
+            coef_var = (std_val / mean_val) * 100 if mean_val != 0 else 0
+            min_val = dataset[variable].min()
+            max_val = dataset[variable].max()
+            results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'mean', 'Value': mean_val})
+            results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'std', 'Value': std_val})
+            results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'coef_var', 'Value': coef_var})
+            results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'min', 'Value': min_val})
+            results.append({'Dataset': dataset_name, 'Variable': variable, 'Statistic': 'max', 'Value': max_val})
+    stats_df = pd.DataFrame(results)
+    return stats_df
+
+def main(data_path, shapefile_path):
+    """
+    Main function to run the water quality analysis.
+    """
+    raw_df = load_and_preprocess_data(data_path)
+    filtered_df, df = clean_data(raw_df, CONFIG)
+    flood, normal, drought = create_hydrological_year_datasets(filtered_df, CONFIG)
+    datasets = create_feature_subsets(flood, normal, drought)
+    clustered_datasets = run_clustering(datasets)
+    flood, normal, drought = add_cluster_labels_to_main_dataframes(clustered_datasets, flood, normal, drought)
+    flood, normal, drought = add_location_data(flood, normal, drought, raw_df, df)
+
+    # The following lines are commented out because they require the shapefile, which is too large to be unzipped in this environment.
+    # flood_gdf, normal_gdf, drought_gdf, shapefile = create_geo_dataframes(flood, normal, drought, shapefile_path)
+    # flood_gdf_s1, flood_gdf_s2, normal_gdf_s1, normal_gdf_s2, drought_gdf_s1, drought_gdf_s2 = create_seasonal_datasets(flood_gdf, normal_gdf, drought_gdf)
+    # flood_gdf, normal_gdf, drought_gdf = aggregate_data_by_station(flood_gdf, normal_gdf, drought_gdf)
+
+    # cluster_plot_datasets = {
+    #     'flood_gdf': flood_gdf,
+    #     'normal_gdf': normal_gdf,
+    #     'drought_gdf': drought_gdf
+    # }
+    # plot_cluster_maps(cluster_plot_datasets, shapefile, CONFIG)
+
+    # gdfs_for_variable_maps = {
+    #     'flood': flood_gdf, 'flood_s1': flood_gdf_s1, 'flood_s2': flood_gdf_s2,
+    #     'normal': normal_gdf, 'normal_s1': normal_gdf_s1, 'normal_s2': normal_gdf_s2,
+    #     'drought': drought_gdf, 'drought_s1': drought_gdf_s1, 'drought_s2': drought_gdf_s2
+    # }
+    # plot_variable_maps(gdfs_for_variable_maps, shapefile, CONFIG)
+
+    # stats_df = generate_summary_statistics(gdfs_for_variable_maps, CONFIG)
+    # print(stats_df)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='A Data-Driven Method for Water Quality Analysis and Prediction for Localized Irrigation.')
+    parser.add_argument('--data_path', type=str, default='../dataset/data_final_qualidade_pcj_v3.csv', help='Path to the dataset CSV file.')
+    parser.add_argument('--shapefile_path', type=str, default='../dataset/GEOFT_BHO_PCJ_TDR-20240613T175444Z-001/GEOFT_BHO_PCJ_TDR.shp', help='Path to the shapefile.')
+    args = parser.parse_args()
+    main(args.data_path, args.shapefile_path)
